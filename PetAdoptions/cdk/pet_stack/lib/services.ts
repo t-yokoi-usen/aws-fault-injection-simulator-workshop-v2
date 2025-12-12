@@ -640,7 +640,7 @@ export class Services extends Stack {
             cluster: cluster,
             manifest: dashboardRoleYaml
         });
-        dahshboardManifest.node.addDependency(cluster);
+        dahshboardManifest.node.addDependency(ssmAgentSetupManifest);
 
 
         var xRayYaml = yaml.loadAll(readFileSync("./resources/k8s_petsite/xray-daemon-config.yaml", "utf8")) as Record<string, any>[];
@@ -651,7 +651,7 @@ export class Services extends Stack {
             cluster: cluster,
             manifest: xRayYaml
         });
-        xrayManifest.node.addDependency(cluster);
+        xrayManifest.node.addDependency(dahshboardManifest);
 
         var loadBalancerServiceAccountYaml = yaml.loadAll(readFileSync("./resources/load_balancer/service_account.yaml", "utf8")) as Record<string, any>[];
         loadBalancerServiceAccountYaml[0].metadata.annotations["eks.amazonaws.com/role-arn"] = new CfnJson(this, "loadBalancer_Role", { value: `${loadBalancerserviceaccount.roleArn}` });
@@ -660,7 +660,7 @@ export class Services extends Stack {
             cluster: cluster,
             manifest: loadBalancerServiceAccountYaml
         });
-        loadBalancerServiceAccount.node.addDependency(cluster);
+        loadBalancerServiceAccount.node.addDependency(xrayManifest);
 
         const waitForLBServiceAccount = new eks.KubernetesObjectValue(this, 'LBServiceAccount', {
             cluster: cluster,
@@ -675,7 +675,7 @@ export class Services extends Stack {
             cluster: cluster,
             manifest: loadBalancerCRDYaml
         });
-        loadBalancerCRDManifest.node.addDependency(cluster);
+        loadBalancerCRDManifest.node.addDependency(loadBalancerServiceAccount);
 
 
         const awsLoadBalancerManifest = new eks.HelmChart(this, "AWSLoadBalancerController", {
@@ -692,9 +692,7 @@ export class Services extends Stack {
                 wait: true
             }
         });
-        awsLoadBalancerManifest.node.addDependency(cluster);
         awsLoadBalancerManifest.node.addDependency(loadBalancerCRDManifest);
-        awsLoadBalancerManifest.node.addDependency(loadBalancerServiceAccount);
         awsLoadBalancerManifest.node.addDependency(waitForLBServiceAccount);
 
         // NOTE: amazon-cloudwatch namespace is created here!!
@@ -730,7 +728,7 @@ export class Services extends Stack {
             cluster: cluster,
             manifest: fluentbitYaml
         });
-        fluentbitManifest.node.addDependency(cluster);
+        fluentbitManifest.node.addDependency(awsLoadBalancerManifest);
 
         // CloudWatch agent for prometheus metrics
         var prometheusYaml = yaml.loadAll(readFileSync("./resources/prometheus-eks.yaml", "utf8")) as Record<string, any>[];
@@ -741,7 +739,6 @@ export class Services extends Stack {
             cluster: cluster,
             manifest: prometheusYaml
         });
-        prometheusManifest.node.addDependency(cluster);
         prometheusManifest.node.addDependency(fluentbitManifest); // Namespace creation dependency
 
 

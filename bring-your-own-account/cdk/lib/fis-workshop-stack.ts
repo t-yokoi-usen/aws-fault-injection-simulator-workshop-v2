@@ -81,6 +81,17 @@ export class FisWorkshopStack extends cdk.Stack {
             ]
         });
 
+        // Add Secrets Manager permissions for Docker Hub credentials
+        codeBuildServiceRole.addToPolicy(new iam.PolicyStatement({
+            effect: iam.Effect.ALLOW,
+            actions: [
+                'secretsmanager:GetSecretValue'
+            ],
+            resources: [
+                'arn:aws:secretsmanager:us-east-1:891623778107:secret:docker_hub_secret-ukh2pH'
+            ]
+        }));
+
         // Create CodeBuild Project for Workshop Build
         const buildProject = new codebuild.Project(this, 'WorkshopBuildProject', {
             projectName: 'FIS-Workshop-Build',
@@ -114,17 +125,30 @@ export class FisWorkshopStack extends cdk.Stack {
                         value: eeTeamRoleArn.valueAsString
                     },
                     IS_EVENT_ENGINE: {
-                        value: isEventEngine.valueAsString
+                        value: isEventEngine.valueAsString                    },
+                    DOCKERHUB_USER: {
+                        value: 'arn:aws:secretsmanager:us-east-1:891623778107:secret:docker_hub_secret-ukh2pH:DOCKER_HUB_USER',
+                        type: codebuild.BuildEnvironmentVariableType.SECRETS_MANAGER
+                    },
+                    DOCKERHUB_PASS: {
+                        value: 'arn:aws:secretsmanager:us-east-1:891623778107:secret:docker_hub_secret-ukh2pH:DOCKER_HUB_PASSWORD',
+                        type: codebuild.BuildEnvironmentVariableType.SECRETS_MANAGER
                     }
                 }
             },
             cache: codebuild.Cache.local(codebuild.LocalCacheMode.DOCKER_LAYER),
             buildSpec: codebuild.BuildSpec.fromObject({
                 version: '0.2',
+                env: {
+                    'secrets-manager': {
+                        DOCKERHUB_USER: 'arn:aws:secretsmanager:us-east-1:891623778107:secret:docker_hub_secret-ukh2pH',
+                        DOCKERHUB_PASS: 'arn:aws:secretsmanager:us-east-1:891623778107:secret:docker_hub_secret-ukh2pH'
+                    }
+                },
                 phases: {
                     install: {
                         'runtime-versions': {
-                            nodejs: '18'
+                            nodejs: '22'
                         },
                         commands: [
                             'nohup /usr/local/bin/dockerd --host=unix:///var/run/docker.sock --host=tcp://127.0.0.1:2375 --storage-driver=overlay2 &',
@@ -134,6 +158,9 @@ export class FisWorkshopStack extends cdk.Stack {
                     },
                     pre_build: {
                         commands: [
+                            '# Docker Hub へのログイン',
+                            'echo Logging in to Docker Hub...',
+                            'echo $DOCKERHUB_PASS | docker login -u $DOCKERHUB_USER --password-stdin',
                             'if [ -z "$GIT_BRANCH" ]; then ' +
                             'git clone --single-branch ${GIT_REPO_URL}; ' +
                             'else ' +
@@ -210,7 +237,7 @@ export class FisWorkshopStack extends cdk.Stack {
                 phases: {
                     install: {
                         'runtime-versions': {
-                            nodejs: '18'
+                            nodejs: '22'
                         },
                         commands: [
                             'npm install -g aws-cdk'
